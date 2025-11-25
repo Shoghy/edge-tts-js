@@ -27,7 +27,7 @@ interface Voice {
 
 export async function listVoices(): Promise<Result<Voice[], ListVoiceError>> {
   const responseResult = await safeFetch(
-    `${VOICE_LIST}&Sec-MS-GEC=${await generateSecMsGec()}&Sec-MS-GEC-Version=${SEC_MS_GEC_VERSION}`,
+    `${VOICE_LIST}&Sec-MS-GEC=${generateSecMsGec()}&Sec-MS-GEC-Version=${SEC_MS_GEC_VERSION}`,
     {
       headers: VOICE_HEADERS,
     },
