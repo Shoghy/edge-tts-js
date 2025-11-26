@@ -1,24 +1,29 @@
 import { randomUUID } from "crypto";
-import { WebSocket } from "ws";
-import { ca } from "./certifi.ts";
+import { Mutex } from "rusting-js";
 import {
   DEFAULT_VOICE,
   SEC_MS_GEC_VERSION,
   WSS_HEADERS,
   WSS_URL,
 } from "./constants.ts";
-import type { Boundary, Hertz, Percentage } from "./types.ts";
+import {
+  TTSChunk,
+  type Boundary,
+  type Hertz,
+  type Percentage,
+} from "./types.ts";
 import { generateSecMsGec } from "./drm.ts";
 
 const SPECIAL_CHARS_ASCII = {
   "\n": 10,
+  "\r": 13,
   " ": 32,
   "&": 38,
   ";": 59,
 } as const;
 
 function connectId() {
-  return randomUUID().replace("-", "");
+  return randomUUID().replaceAll("-", "");
 }
 
 function isWhiteSpace(byte: number) {
@@ -178,6 +183,37 @@ ${escapedText}\
 </speak>`;
 }
 
+function dateToString() {
+  return (
+    new Date().toUTCString().replace(",", "") +
+    "+0000 (Coordinated Universal Time)"
+  );
+}
+
+interface WebSocketMessageHeadersAndData {
+  headers: {
+    "X-RequestId": string;
+    "Content-Type": string;
+    Path: "turn.start" | "response" | "audio.metadata" | "turn.end";
+  };
+  data: string | Uint8Array;
+}
+
+function getHeadersAndData(data: string | Uint8Array, headerLength: number) {
+  const lines = data.slice(0, headerLength).split();
+  const headers: Record<string, string> = {};
+
+  for (const line of lines) {
+    const [key, value] = line.split(":", 1);
+    headers[key!] = value!;
+  }
+
+  return {
+    headers,
+    data: data.slice(headerLength + 2),
+  } as WebSocketMessageHeadersAndData;
+}
+
 class CommunicateState {
   constructor(
     public partialText: Uint8Array,
@@ -239,18 +275,20 @@ export class Communicate {
 
     this.state.streamWasCalled = true;
     for (this.state.partialText of this.texts) {
-      this.#stream();
+      await this.#stream();
     }
   }
 
   async #stream() {
     const _audioWasReceived = false;
 
+    const m = new Mutex<void>(undefined);
+    const mainLock = await m.lock();
+
     const ws = new WebSocket(
       `${WSS_URL}&ConnectionId=${connectId()}&Sec-MS-GEC=${generateSecMsGec()}&Sec-MS-GEC-Version=${SEC_MS_GEC_VERSION}`,
       {
         headers: WSS_HEADERS,
-        ca,
       },
     );
 
@@ -259,9 +297,8 @@ export class Communicate {
       const wd = wordBoundary.toString();
       const sq = (!wordBoundary).toString();
 
-      return new Promise<void>((rsv, rjc) => {
-        ws.send(
-          `X-Timestamp:${new Date().toString()}\r
+      return ws.send(
+        `X-Timestamp:${dateToString()}\r
 Content-Type:application/json; charset=utf-8\r
 Path:speech.config\r\n\r
 {"context":{"synthesis":{"audio":{"metadataoptions":{\
@@ -269,40 +306,95 @@ Path:speech.config\r\n\r
 },\
 "outputFormat":"audio-24khz-48kbitrate-mono-mp3"\
 }}}}\r\n`,
-          (error) => {
-            if (error === undefined) {
-              rsv();
-            } else {
-              rjc(error);
-            }
-          },
-        );
-      });
+      );
     };
 
     const sendSsmlRequest = () =>
-      new Promise<void>((rsv, rjc) =>
-        ws.send(
-          ssmlHeadersPlusData(
-            connectId(),
-            new Date().toString(),
-            mkssml(this.ttsConfig, this.state.partialText),
-          ),
-          (error) => {
-            if (error === undefined) {
-              rsv();
-            } else {
-              rjc(error);
-            }
-          },
+      ws.send(
+        ssmlHeadersPlusData(
+          connectId(),
+          dateToString(),
+          mkssml(this.ttsConfig, this.state.partialText),
         ),
       );
 
     ws.onopen = async () => {
-      await sendCommandRequest();
-      await sendSsmlRequest();
+      sendCommandRequest();
+      sendSsmlRequest();
     };
 
-    ws.onmessage = () => {};
+    ws.onmessage = (event) => {
+      const data = event.data;
+      if (typeof data === "string") {
+        const serializedData = getHeadersAndData(
+          data,
+          data.indexOf("\r\n\r\n"),
+        );
+
+        switch (serializedData.headers.Path) {
+          case "audio.metadata": {
+            const parsedMetadata = this.#parseMetadata(serializedData.data);
+
+            this.state.lastDurationOffset =
+              parsedMetadata.offset! + parsedMetadata.duration!;
+
+            break;
+          }
+          case "turn.end":
+            this.state.offsetCompensation = this.state.lastDurationOffset;
+            this.state.offsetCompensation += 8_750_000;
+            break;
+          case "turn.start":
+          case "response":
+            break;
+          default:
+            throw new Error("Unknown path received");
+        }
+      } else if (data instanceof Buffer) {
+        if (data.length < 2) {
+          throw new Error(
+            "We received a binary message, but it is missing the header length.",
+          );
+        }
+
+        const headerLength = data.readUint16BE(0);
+        if (headerLength > data.length) {
+          throw new Error(
+            "The header length is greater than the length of the data.",
+          );
+        }
+
+        const bytes = new Uint8Array(data);
+
+        getHeadersAndData(bytes, headerLength);
+      }
+    };
+
+    ws.onclose = () => {
+      mainLock.unlock();
+    };
+
+    ws.onerror = (_) => {};
+  }
+
+  #parseMetadata(data: MessageAudioMetadata["data"]) {
+    for (const metadata of data.Metadata) {
+      if (
+        metadata.Type === "SentenceBoundary" ||
+        metadata.Type === "WordBoundary"
+      ) {
+        return new TTSChunk({
+          type: metadata.Type,
+          offset: metadata.Data.Offset + this.state.offsetCompensation,
+          duration: metadata.Data.Duration,
+          text: metadata.Data.text.Text,
+        });
+      }
+      if (metadata.Type === "SessionEnd") {
+        continue;
+      }
+      throw new Error(`Unknown metadata type: ${metadata.Type}`);
+    }
+    throw new Error(`No Boundary metadata found`);
   }
 }

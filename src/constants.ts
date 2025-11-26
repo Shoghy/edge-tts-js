@@ -23,6 +23,7 @@ export const WSS_HEADERS = {
   Origin: "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold",
   "Sec-WebSocket-Protocol": "synthesize",
   "Sec-WebSocket-Version": "13",
+  "Sec-Websocket-Extensions": "permessage-deflate; client_max_window_bits",
 } as const;
 
 export const VOICE_HEADERS = {

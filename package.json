@@ -5,7 +5,6 @@
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/bun": "latest",
-    "@types/ws": "^8.18.1",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
@@ -17,7 +16,6 @@
     "typescript-eslint": "^8.48.0"
   },
   "dependencies": {
-    "rusting-js": "^0.1.15",
-    "ws": "^8.18.3"
+    "rusting-js": "^0.1.15"
   }
 }

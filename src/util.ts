@@ -10,5 +10,8 @@ export interface RunTTSArgs {
 }
 
 export async function runTTS({ text, voice, ...args }: RunTTSArgs) {
-  const _communicate = new Communicate(text, voice, args);
+  const communicate = new Communicate(text, voice, args);
+  await communicate.stream();
 }
+
+runTTS({ text: "Hello world" });
