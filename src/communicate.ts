@@ -7,12 +7,22 @@ import {
   WSS_URL,
 } from "./constants.ts";
 import {
+  Bytes,
   TTSChunk,
   type Boundary,
   type Hertz,
   type Percentage,
 } from "./types.ts";
 import { generateSecMsGec } from "./drm.ts";
+import {
+  ControlFlow,
+  Err,
+  None,
+  Ok,
+  Option,
+  Some,
+  type Result,
+} from "rusting-js/enums";
 
 const SPECIAL_CHARS_ASCII = {
   "\n": 10,
@@ -24,17 +34,6 @@ const SPECIAL_CHARS_ASCII = {
 
 function connectId() {
   return randomUUID().replaceAll("-", "");
-}
-
-function isWhiteSpace(byte: number) {
-  return (
-    byte === 0x09 || // \t
-    byte === 0x0a || // \n
-    byte === 0x0b || // \v
-    byte === 0x0c || // \f
-    byte === 0x0d || // \r
-    byte === 0x20 // space
-  );
 }
 
 function removeIncompatibleCharacters(value: string | Uint8Array): string {
@@ -117,40 +116,37 @@ function adjustSplitPointForXmlEntity(
   return splitAt;
 }
 
-function* splitTextByByteLength(text: string | Uint8Array, byteLength: number) {
-  if (typeof text === "string") {
-    const encoder = new TextEncoder();
-    text = encoder.encode(text);
-  }
-
+function* splitTextByByteLength(text: string, byteLength: number) {
   if (byteLength <= 0) {
     throw new Error("byteLength must be greater than 0");
   }
 
+  let value = Bytes.fromString(text);
+
   byteLength = Math.round(byteLength);
 
-  while (text.length > byteLength) {
-    let splitAt = findLastNewlineOrSpaceWithinLimit(text, byteLength);
+  while (value.length > byteLength) {
+    let splitAt = findLastNewlineOrSpaceWithinLimit(value, byteLength);
     if (splitAt < 0) {
-      splitAt = findSafeUtf8SplitPoint(text);
+      splitAt = findSafeUtf8SplitPoint(value);
     }
 
-    splitAt = adjustSplitPointForXmlEntity(text, splitAt);
+    splitAt = adjustSplitPointForXmlEntity(value, splitAt);
     if (splitAt < 0) {
       throw new Error(
         "Maximum byte length is too small or invalid text structure near '&' or invalid UTF-8",
       );
     }
 
-    const chunk = text.slice(0, splitAt).filter((b) => !isWhiteSpace(b));
+    const chunk = value.slice(0, splitAt).trim();
     if (chunk.length > 0) {
       yield chunk;
     }
 
-    text = text.slice(splitAt > 0 ? splitAt : 1);
+    value = value.slice(splitAt > 0 ? splitAt : 1);
   }
 
-  const remainingChunk = text.filter((b) => !isWhiteSpace(b));
+  const remainingChunk = value.trim();
   if (remainingChunk.length > 0) {
     yield remainingChunk;
   }
@@ -190,17 +186,69 @@ function dateToString() {
   );
 }
 
-interface WebSocketMessageHeadersAndData {
-  headers: {
-    "X-RequestId": string;
-    "Content-Type": string;
-    Path: "turn.start" | "response" | "audio.metadata" | "turn.end";
-  };
-  data: string | Uint8Array;
+interface Header<Path extends string> {
+  "X-RequestId": string;
+  "Content-Type": string;
+  Path: Path;
 }
 
-function getHeadersAndData(data: string | Uint8Array, headerLength: number) {
-  const lines = data.slice(0, headerLength).split();
+interface TurnStartHeaderData {
+  headers: Header<"turn.start">;
+  data: {
+    context: {
+      serviceTag: string;
+    };
+  };
+}
+
+interface ResponseHeaderData {
+  headers: Header<"response">;
+  data: {
+    context: {
+      serviceTag: string;
+      audio: {
+        type: string;
+        streamId: string;
+      };
+    };
+  };
+}
+
+interface AudioMetadataHeaderData {
+  headers: Header<"audio.metadata">;
+  data: {
+    Metadata: {
+      Type: Boundary;
+      Data: {
+        Offset: number;
+        Duration: number;
+        text: {
+          Text: string;
+          Length: number;
+          BoundaryType: Boundary;
+        };
+      };
+    }[];
+  };
+}
+
+interface TurnEndHeaderData {
+  headers: Header<"turn.end">;
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  data: {};
+}
+
+type HeaderData =
+  | TurnStartHeaderData
+  | ResponseHeaderData
+  | AudioMetadataHeaderData
+  | TurnEndHeaderData;
+
+function getHeadersAndDataString(
+  data: string,
+  headerLength: number,
+): HeaderData {
+  const lines = data.slice(0, headerLength).split("\r\n");
   const headers: Record<string, string> = {};
 
   for (const line of lines) {
@@ -210,8 +258,23 @@ function getHeadersAndData(data: string | Uint8Array, headerLength: number) {
 
   return {
     headers,
-    data: data.slice(headerLength + 2),
-  } as WebSocketMessageHeadersAndData;
+    data: JSON.parse(data.slice(headerLength + 2)),
+  } as unknown as HeaderData;
+}
+
+function getHeadersAndDataBytes(data: Bytes, headerLength: number) {
+  const lines = data.slice(0, headerLength).split("\r\n");
+  const headers: Record<string, string> = {};
+
+  for (const line of lines) {
+    const [key, value] = line.split(":", 1);
+    headers[key!.toString()] = value!.toString();
+  }
+
+  return {
+    headers,
+    data,
+  };
 }
 
 class CommunicateState {
@@ -280,10 +343,12 @@ export class Communicate {
   }
 
   async #stream() {
-    const _audioWasReceived = false;
+    let audioWasReceived = false;
 
-    const m = new Mutex<void>(undefined);
-    const mainLock = await m.lock();
+    const dataMutex = new Mutex<
+      Option<ControlFlow<void, Result<TTSChunk, Error>>>
+    >(None());
+    let dataMainLock = await dataMutex.lock();
 
     const ws = new WebSocket(
       `${WSS_URL}&ConnectionId=${connectId()}&Sec-MS-GEC=${generateSecMsGec()}&Sec-MS-GEC-Version=${SEC_MS_GEC_VERSION}`,
@@ -323,17 +388,31 @@ Path:speech.config\r\n\r
       sendSsmlRequest();
     };
 
-    ws.onmessage = (event) => {
+    async function setMainLock(
+      value: ControlFlow<void, Result<TTSChunk, Error>>,
+    ) {
+      if (!dataMainLock.hasLock) {
+        dataMainLock = await dataMutex.lock();
+      }
+      dataMainLock.value = Some(value);
+      dataMainLock.unlock();
+    }
+
+    ws.onmessage = async (event) => {
       const data = event.data;
       if (typeof data === "string") {
-        const serializedData = getHeadersAndData(
+        const serializedData = getHeadersAndDataString(
           data,
           data.indexOf("\r\n\r\n"),
         );
 
         switch (serializedData.headers.Path) {
           case "audio.metadata": {
-            const parsedMetadata = this.#parseMetadata(serializedData.data);
+            const parsedMetadata = this.#parseMetadata(
+              serializedData.data as AudioMetadataHeaderData["data"],
+            );
+
+            await setMainLock(ControlFlow.Continue(Ok(parsedMetadata)));
 
             this.state.lastDurationOffset =
               parsedMetadata.offset! + parsedMetadata.duration!;
@@ -343,12 +422,18 @@ Path:speech.config\r\n\r
           case "turn.end":
             this.state.offsetCompensation = this.state.lastDurationOffset;
             this.state.offsetCompensation += 8_750_000;
+
+            await setMainLock(ControlFlow.Break(undefined));
+
+            ws.close();
             break;
           case "turn.start":
           case "response":
             break;
           default:
-            throw new Error("Unknown path received");
+            await setMainLock(
+              ControlFlow.Continue(Err(new Error("Unknown path received"))),
+            );
         }
       } else if (data instanceof Buffer) {
         if (data.length < 2) {
@@ -364,20 +449,51 @@ Path:speech.config\r\n\r
           );
         }
 
-        const bytes = new Uint8Array(data);
+        const bytes = new Bytes(data);
 
-        getHeadersAndData(bytes, headerLength);
+        const serializedData = getHeadersAndDataBytes(bytes, headerLength);
+
+        if (serializedData.headers.Path !== "audio") {
+          throw new Error(
+            "Received binary message, but the path is not audio.",
+          );
+        }
+
+        const contentType = serializedData.headers["Content-Type"];
+        if (contentType !== undefined && contentType !== "audio/mpeg") {
+          throw new Error(
+            "Received binary message, but with an unexpected Content-Type.",
+          );
+        }
+
+        if (contentType !== undefined) {
+          if (bytes.length === 0) {
+            return;
+          }
+
+          throw new Error(
+            "Received binary message with no Content-Type, but with data.",
+          );
+        }
+
+        if (bytes.length === 0) {
+          throw new Error(
+            "Received binary message, but it is missing the audio data.",
+          );
+        }
+
+        audioWasReceived = true;
       }
     };
 
     ws.onclose = () => {
-      mainLock.unlock();
+      dataMainLock.unlock();
     };
 
     ws.onerror = (_) => {};
   }
 
-  #parseMetadata(data: MessageAudioMetadata["data"]) {
+  #parseMetadata(data: AudioMetadataHeaderData["data"]) {
     for (const metadata of data.Metadata) {
       if (
         metadata.Type === "SentenceBoundary" ||
