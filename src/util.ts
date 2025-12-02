@@ -1,3 +1,4 @@
+import fs from "fs";
 import { Err, Ok, type Result } from "rusting-js/enums";
 import { Communicate } from "./communicate.ts";
 import type { Hertz, Percentage } from "./types.ts";
@@ -11,9 +12,17 @@ export interface RunTTSArgs {
   pitch?: Hertz;
 }
 
-export interface RunTTSReturn {
-  chunks: Uint8Array[];
-  subtitles: string;
+export class RunTTSReturn {
+  constructor(
+    public data: Uint8Array,
+    public subtitles: string,
+  ) {}
+
+  writeMp3(path: string): Promise<Result<void, ErrnoException>> {
+    return new Promise((resolve) =>
+      fs.writeFile(path, this.data, (e) => resolve(e === null ? Ok() : Err(e))),
+    );
+  }
 }
 
 export async function runTTS({
@@ -32,6 +41,7 @@ export async function runTTS({
     }
 
     const chunk = chunkResult.unwrap();
+
     chunk.match({
       Audio({ data }) {
         chunks.push(data);
@@ -42,5 +52,18 @@ export async function runTTS({
     });
   }
 
-  return Ok({ chunks, subtitles: submaker.toString() });
+  const data = new Uint8Array(
+    chunks.reduce(
+      (accumulator, currentValue) => accumulator + currentValue.length,
+      0,
+    ),
+  );
+
+  for (let i = 0, accumulator = 0; i < chunks.length; ++i) {
+    const chunk = chunks[i]!;
+    data.set(chunks[i]!, accumulator);
+    accumulator += chunk.length;
+  }
+
+  return Ok(new RunTTSReturn(data, submaker.toString()));
 }

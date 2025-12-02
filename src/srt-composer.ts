@@ -68,7 +68,7 @@ function shouldSkipSub(subtitle: Subtitle): Option<string> {
   if (subtitle.start < 0) {
     return Some("Start time < 0 seconds");
   }
-  if (subtitle.end >= subtitle.start) {
+  if (subtitle.start >= subtitle.end) {
     return Some("Subtitle start time >= end time");
   }
 
