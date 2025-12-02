@@ -589,6 +589,8 @@ Path:speech.config\r\n\r
       if (control.isBreak()) {
         ws.close();
 
+        lock.unlock();
+
         if (!audioWasReceived) {
           yield Err(
             new Error(
@@ -596,8 +598,6 @@ Path:speech.config\r\n\r
             ),
           );
         }
-        lock.unlock();
-
         return;
       }
 

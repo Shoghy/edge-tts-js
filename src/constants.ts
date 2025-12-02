@@ -29,7 +29,7 @@ export const WSS_HEADERS = {
 export const VOICE_HEADERS = {
   ...BASE_HEADERS,
   Authority: "speech.platform.bing.com",
-  "Sec-CH-UA": `" Not;A Brand";v="99", "Microsoft Edge";v="{CHROMIUM_MAJOR_VERSION}", "Chromium";v="{CHROMIUM_MAJOR_VERSION}"`,
+  "Sec-CH-UA": `" Not;A Brand";v="99", "Microsoft Edge";v="${CHROMIUM_MAJOR_VERSION}", "Chromium";v="E${CHROMIUM_MAJOR_VERSION}"`,
   "Sec-CH-UA-Mobile": "?0",
   Accept: "*/*",
   "Sec-Fetch-Site": "none",

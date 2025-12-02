@@ -1,6 +1,6 @@
 {
   "name": "edge-tts-js",
-  "module": "src/index.ts",
+  "module": "./src/index.ts",
   "type": "module",
   "devDependencies": {
     "@eslint/js": "^9.39.1",
