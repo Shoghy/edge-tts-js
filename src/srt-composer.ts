@@ -15,6 +15,19 @@ function makeLegalContent(content: string): string {
   return legalContent;
 }
 
+const MICROSECONDS_TO_MILLISECOND = 1000;
+const MICROSECONDS_TO_SECOND = MICROSECONDS_TO_MILLISECOND * 1000;
+const MICROSECONDS_TO_MINUTE = MICROSECONDS_TO_SECOND * 60;
+const MICROSECONDS_TO_HOUR = MICROSECONDS_TO_MINUTE * 60;
+function timeString(microseconds: number): string {
+  const hrs = Math.floor(microseconds / MICROSECONDS_TO_HOUR);
+  const mins = Math.floor(microseconds / MICROSECONDS_TO_MINUTE) % 60;
+  const secs = Math.floor(microseconds / MICROSECONDS_TO_SECOND) % 60;
+  const msecs = Math.floor(microseconds / MICROSECONDS_TO_MILLISECOND) % 1000;
+
+  return `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")},${msecs.toString().padStart(3, "0")}`;
+}
+
 export class Subtitle {
   constructor(
     public index: number,
@@ -57,7 +70,7 @@ export class Subtitle {
       outputContent = outputContent.replaceAll("\n", eol);
     }
 
-    return `${this.index}${eol}${this.start} --> ${this.end}${eol}${outputContent}${eol}${eol}`;
+    return `${this.index}${eol}${timeString(this.start)} --> ${timeString(this.end)}${eol}${outputContent}${eol}${eol}`;
   }
 }
 

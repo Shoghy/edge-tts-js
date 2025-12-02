@@ -23,6 +23,14 @@ export class RunTTSReturn {
       fs.writeFile(path, this.data, (e) => resolve(e === null ? Ok() : Err(e))),
     );
   }
+
+  writeSubtitles(path: string): Promise<Result<void, ErrnoException>> {
+    return new Promise((resolve) =>
+      fs.writeFile(path, this.subtitles, (e) =>
+        resolve(e === null ? Ok() : Err(e)),
+      ),
+    );
+  }
 }
 
 export async function runTTS({
