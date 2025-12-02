@@ -52,6 +52,7 @@ export default defineConfig([
         { prefer: "type-imports", fixStyle: "inline-type-imports" },
       ],
       "@typescript-eslint/no-deprecated": "warn",
+      "@typescript-eslint/explicit-function-return-type": "error",
     },
   },
 ]);

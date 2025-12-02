@@ -1,32 +1,27 @@
+import { Arm, Class, Enum } from "rusting-js/enums";
+
 export type Hertz = `${"+" | "-"}${number}Hz`;
 export type Percentage = `${"+" | "-"}${number}%`;
 export type Boundary = "WordBoundary" | "SentenceBoundary";
 
-interface TTSChunkProps {
-  type: Boundary | "audio";
-  data?: Bytes;
-  duration?: number;
-  offset?: number;
-  text?: string;
+export interface TTSChunkAudio {
+  data: Uint8Array;
 }
 
-export class TTSChunk implements TTSChunkProps {
-  type: Boundary | "audio";
-  data?: Bytes;
-  duration?: number;
-  offset?: number;
-  text?: string;
-
-  constructor(props: TTSChunkProps) {
-    this.type = props.type;
-    this.data = props.data;
-    this.duration = props.duration;
-    this.offset = props.offset;
-    this.text = props.text;
-  }
+export interface TTSChunkSub {
+  type: Boundary;
+  duration: number;
+  offset: number;
+  text: string;
 }
 
-function isWhiteSpace(byte: number) {
+export class TTSChunk extends Enum({
+  __classType__: Class<TTSChunk>(),
+  Audio: Arm<TTSChunkAudio>(),
+  Sub: Arm<TTSChunkSub>(),
+}) {}
+
+function isWhiteSpace(byte: number): boolean {
   return (
     byte === 0x09 || // \t
     byte === 0x0a || // \n
@@ -92,12 +87,12 @@ export class Bytes extends Uint8Array {
     return -1;
   }
 
-  static fromString(value: string) {
+  static fromString(value: string): Bytes {
     const v = new TextEncoder().encode(value);
     return new Bytes(v.buffer);
   }
 
-  split(search: string | Uint8Array, limit?: number) {
+  split(search: string | Uint8Array, limit?: number): Bytes[] {
     if (limit !== undefined) {
       if (limit < 0) {
         limit = undefined;
@@ -116,7 +111,7 @@ export class Bytes extends Uint8Array {
       const count =
         limit !== undefined ? Math.min(this.length, limit) : this.length;
       for (let i = 0; i < count; i++) {
-        out.push(new Bytes(this.buffer, i, 1));
+        out.push(this.slice(i, i + 1));
       }
       return out;
     }
@@ -169,19 +164,19 @@ export class Bytes extends Uint8Array {
         continue;
       }
 
-      out.push(new Bytes(this.buffer, start, pos - start));
+      out.push(this.slice(start, pos));
       if (out.length >= limit) return out;
 
       pos += needle.length;
       start = pos;
     }
 
-    out.push(new Bytes(this.buffer, start));
+    out.push(this.slice(start));
 
     return out;
   }
 
-  trimStart() {
+  trimStart(): Bytes {
     let i = 0;
     for (; i < this.length; ++i) {
       if (!isWhiteSpace(this[i]!)) {
@@ -189,10 +184,10 @@ export class Bytes extends Uint8Array {
       }
     }
 
-    return new Bytes(this.buffer, i);
+    return this.slice(i);
   }
 
-  trimEnd() {
+  trimEnd(): Bytes {
     let i = this.length - 1;
     for (; i >= 0; --i) {
       if (!isWhiteSpace(this[i]!)) {
@@ -200,10 +195,10 @@ export class Bytes extends Uint8Array {
       }
     }
 
-    return new Bytes(this.buffer, 0, i + 1);
+    return this.slice(0, i + 1);
   }
 
-  trim() {
+  trim(): Bytes {
     return this.trimStart().trimEnd();
   }
 
@@ -215,7 +210,7 @@ export class Bytes extends Uint8Array {
     return new TextDecoder().decode(this);
   }
 
-  equals(bytes: Uint8Array) {
+  equals(bytes: Uint8Array): boolean {
     if (this.length !== bytes.length) return false;
     if (this.length === 0) return true;
 

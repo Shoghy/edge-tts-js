@@ -4,7 +4,7 @@ import { TRUSTED_CLIENT_TOKEN } from "./constants.ts";
 const WIN_EPOCH = 11644473600;
 const S_TO_NS = 1e9;
 
-export function generateSecMsGec() {
+export function generateSecMsGec(): string {
   let ticks = Date.now() / 1000;
 
   ticks += WIN_EPOCH;
@@ -20,7 +20,7 @@ export function generateSecMsGec() {
   return encryptSecMsGec(strToHash);
 }
 
-function encryptSecMsGec(value: string) {
+function encryptSecMsGec(value: string): string {
   return createHash("sha256")
     .update(value, "ascii")
     .digest("hex")
