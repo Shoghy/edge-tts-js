@@ -6,6 +6,7 @@ import eslintPluginPrettierRecommended from "eslint-plugin-prettier/recommended"
 import importPlugin from "eslint-plugin-import";
 
 export default defineConfig([
+  { ignores: ["dist/"] },
   {
     files: ["**/*.{js,mjs,cjs,ts,mts,cts}"],
     plugins: { js },
@@ -15,7 +16,7 @@ export default defineConfig([
       parserOptions: {
         projectService: {
           defaultProject: "tsconfig.json",
-          allowDefaultProject: ["eslint.config.ts"],
+          allowDefaultProject: ["eslint.config.ts", "tsup.config.ts"],
         },
         tsconfigRootDir: import.meta.dirname,
       },
