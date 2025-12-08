@@ -3,14 +3,14 @@ import { Arm, Class, Enum, Err, Ok, type Result } from "rusting-js/enums";
 import { SEC_MS_GEC_VERSION, VOICE_HEADERS, VOICE_LIST } from "./constants.ts";
 import { generateSecMsGec } from "./drm.ts";
 
-class ListVoiceError extends Enum({
+export class ListVoiceError extends Enum({
   __classType__: Class<ListVoiceError>(),
   FetchThrow: Arm<Error>(),
   ReponseIsNotValidJSON: Arm<string>(),
   UnknownReponse: Arm<Error>(),
 }) {}
 
-interface Voice {
+export interface Voice {
   Name: string;
   DisplayName: string;
   LocalName: string;
