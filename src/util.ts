@@ -33,6 +33,8 @@ export class RunTTSReturn {
   }
 }
 
+const DATA_GROW = 14400;
+
 export async function runTTS({
   text,
   voice,
@@ -41,7 +43,20 @@ export async function runTTS({
   const communicate = new Communicate(text, voice, args);
   const submaker = new SubMaker();
 
-  let data = new Uint8Array();
+  let data = new Uint8Array(DATA_GROW);
+  let length = 0;
+
+  function addData(bytes: Uint8Array): void {
+    length += bytes.length;
+    if (length > data.length) {
+      const grow = Math.max(length, data.length + DATA_GROW);
+      const temp = new Uint8Array(grow);
+      temp.set(data);
+      data = temp;
+    }
+
+    data.set(bytes, length);
+  }
 
   for await (const chunkResult of communicate.stream()) {
     if (chunkResult.isErr()) {
@@ -52,7 +67,7 @@ export async function runTTS({
 
     chunk.match({
       Audio({ data: mp3Bytes }) {
-        data = Buffer.concat([data, mp3Bytes]);
+        addData(mp3Bytes);
       },
       Sub(sub) {
         submaker.feed(sub);
@@ -60,5 +75,5 @@ export async function runTTS({
     });
   }
 
-  return Ok(new RunTTSReturn(data, submaker.toString()));
+  return Ok(new RunTTSReturn(data.slice(0, length), submaker.toString()));
 }
