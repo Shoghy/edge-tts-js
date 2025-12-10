@@ -1,12 +1,11 @@
 import { randomUUID } from "crypto";
-import { Mutex } from "rusting-js";
+import { promiseWithResolvers } from "rusting-js";
 import {
   ControlFlow,
   Err,
   None,
   Ok,
   type Option,
-  Some,
   type Result,
 } from "rusting-js/enums";
 import {
@@ -364,11 +363,6 @@ export class Communicate {
   async *#stream(): AsyncGenerator<Result<TTSChunk, Error>, void> {
     let audioWasReceived = false;
 
-    const dataMutex = new Mutex<
-      Option<ControlFlow<void, Result<TTSChunk, Error>>>
-    >(None());
-    let dataMainLock = await dataMutex.lock();
-
     const ws = new WebSocket(
       `${WSS_URL}&ConnectionId=${connectId()}&Sec-MS-GEC=${generateSecMsGec()}&Sec-MS-GEC-Version=${SEC_MS_GEC_VERSION}`,
       {
@@ -407,15 +401,8 @@ Path:speech.config\r\n\r
       sendSsmlRequest();
     };
 
-    async function setMainLock(
-      value: ControlFlow<void, Result<TTSChunk, Error>>,
-    ): Promise<void> {
-      if (!dataMainLock.hasLock) {
-        dataMainLock = await dataMutex.lock();
-      }
-      dataMainLock.value = Some(value);
-      dataMainLock.unlock();
-    }
+    let promise =
+      promiseWithResolvers<ControlFlow<void, Result<TTSChunk, Error>>>();
 
     ws.onmessage = async (event): Promise<void> => {
       const data = event.data;
@@ -432,7 +419,7 @@ Path:speech.config\r\n\r
               serializedData.data as AudioMetadataHeaderData["data"],
             );
 
-            await setMainLock(
+            promise.resolve(
               ControlFlow.Continue(Ok(TTSChunk.Sub(parsedMetadata))),
             );
 
@@ -445,7 +432,7 @@ Path:speech.config\r\n\r
             this.state.offsetCompensation = this.state.lastDurationOffset;
             this.state.offsetCompensation += 8_750_000;
 
-            await setMainLock(ControlFlow.Break(undefined));
+            promise.resolve(ControlFlow.Break(undefined));
 
             ws.close();
             break;
@@ -453,7 +440,7 @@ Path:speech.config\r\n\r
           case "response":
             break;
           default:
-            await setMainLock(
+            promise.resolve(
               ControlFlow.Continue(
                 Err(
                   new Error(
@@ -467,7 +454,7 @@ Path:speech.config\r\n\r
         }
       } else if (data instanceof Buffer) {
         if (data.length < 2) {
-          await setMainLock(
+          promise.resolve(
             ControlFlow.Continue(
               Err(
                 new Error(
@@ -482,7 +469,7 @@ Path:speech.config\r\n\r
 
         const headerLength = data.readUint16BE(0);
         if (headerLength > data.length) {
-          await setMainLock(
+          promise.resolve(
             ControlFlow.Continue(
               Err(
                 new Error(
@@ -499,7 +486,7 @@ Path:speech.config\r\n\r
 
         const serializedData = getHeadersAndDataBytes(bytes, headerLength);
         if (serializedData.headers.Path !== "audio") {
-          await setMainLock(
+          promise.resolve(
             ControlFlow.Continue(
               Err(
                 new Error(
@@ -514,7 +501,7 @@ Path:speech.config\r\n\r
 
         const contentType = serializedData.headers["Content-Type"];
         if (contentType !== undefined && contentType !== "audio/mpeg") {
-          await setMainLock(
+          promise.resolve(
             ControlFlow.Continue(
               Err(
                 new Error(
@@ -532,7 +519,7 @@ Path:speech.config\r\n\r
             return;
           }
 
-          await setMainLock(
+          promise.resolve(
             ControlFlow.Continue(
               Err(
                 new Error(
@@ -546,7 +533,7 @@ Path:speech.config\r\n\r
         }
 
         if (serializedData.data.length === 0) {
-          await setMainLock(
+          promise.resolve(
             ControlFlow.Continue(
               Err(
                 new Error(
@@ -559,7 +546,7 @@ Path:speech.config\r\n\r
           return;
         }
 
-        await setMainLock(
+        promise.resolve(
           ControlFlow.Continue(
             Ok(TTSChunk.Audio({ data: serializedData.data })),
           ),
@@ -570,26 +557,19 @@ Path:speech.config\r\n\r
     };
 
     ws.onclose = async (): Promise<void> => {
-      await setMainLock(ControlFlow.Break(undefined));
+      promise.resolve(ControlFlow.Break(undefined));
     };
 
     ws.onerror = async (_): Promise<void> => {
-      await setMainLock(ControlFlow.Continue(Err(new Error("Unknown error"))));
+      promise.resolve(ControlFlow.Continue(Err(new Error("Unknown error"))));
     };
 
     while (true) {
-      const lock = await dataMutex.lock();
+      const control = await promise.promise;
+      promise = promiseWithResolvers();
 
-      if (lock.value.isNone()) {
-        dataMainLock = lock;
-        continue;
-      }
-
-      const control = lock.value.unwrap();
       if (control.isBreak()) {
         ws.close();
-
-        lock.unlock();
 
         if (!audioWasReceived) {
           yield Err(
@@ -605,12 +585,10 @@ Path:speech.config\r\n\r
       if (result.isErr()) {
         ws.close();
 
-        lock.unlock();
         yield result;
         return;
       }
 
-      dataMainLock = lock;
       yield result;
     }
   }
