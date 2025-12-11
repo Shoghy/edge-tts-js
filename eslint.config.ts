@@ -16,7 +16,11 @@ export default defineConfig([
       parserOptions: {
         projectService: {
           defaultProject: "tsconfig.json",
-          allowDefaultProject: ["eslint.config.ts", "tsup.config.ts"],
+          allowDefaultProject: [
+            "eslint.config.ts",
+            "tsup.config.ts",
+            "move-files.ts",
+          ],
         },
         tsconfigRootDir: import.meta.dirname,
       },

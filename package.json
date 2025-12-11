@@ -23,7 +23,7 @@
   "types": "index.d.cts",
   "license": "MIT",
   "scripts": {
-    "build": "tsup"
+    "build": "tsup && bun run move-files.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
