@@ -1,8 +1,22 @@
-import { createHash } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { TRUSTED_CLIENT_TOKEN } from "./constants.ts";
 
 const WIN_EPOCH = 11644473600;
 const S_TO_NS = 1e9;
+
+function generateMuid(): string {
+  return randomBytes(16).toString("hex").toUpperCase();
+}
+
+export function headersWithMuid({
+  ...headers
+}: Record<string, string>): Record<string, string> {
+  if ("Cookie" in headers) {
+    throw new Error("Header already has `Cookie`");
+  }
+  headers.Cookie = `muid=${generateMuid()}`;
+  return headers;
+}
 
 export function generateSecMsGec(): string {
   let ticks = Date.now() / 1000;

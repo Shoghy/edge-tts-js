@@ -22,7 +22,7 @@ import {
   type Percentage,
   type TTSChunkSub,
 } from "./types.ts";
-import { generateSecMsGec } from "./drm.ts";
+import { generateSecMsGec, headersWithMuid } from "./drm.ts";
 
 const SPECIAL_CHARS_ASCII = {
   "\n": 10,
@@ -366,7 +366,7 @@ export class Communicate {
     const ws = new WebSocket(
       `${WSS_URL}&ConnectionId=${connectId()}&Sec-MS-GEC=${generateSecMsGec()}&Sec-MS-GEC-Version=${SEC_MS_GEC_VERSION}`,
       {
-        headers: WSS_HEADERS,
+        headers: headersWithMuid(WSS_HEADERS),
       },
     );
 

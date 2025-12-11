@@ -1,7 +1,7 @@
 import { catchUnwind, catchUnwindAsync, safeFetch } from "rusting-js";
 import { Arm, Class, Enum, Err, Ok, type Result } from "rusting-js/enums";
 import { SEC_MS_GEC_VERSION, VOICE_HEADERS, VOICE_LIST } from "./constants.ts";
-import { generateSecMsGec } from "./drm.ts";
+import { generateSecMsGec, headersWithMuid } from "./drm.ts";
 
 export class ListVoiceError extends Enum({
   __classType__: Class<ListVoiceError>(),
@@ -29,7 +29,7 @@ export async function listVoices(): Promise<Result<Voice[], ListVoiceError>> {
   const responseResult = await safeFetch(
     `${VOICE_LIST}&Sec-MS-GEC=${generateSecMsGec()}&Sec-MS-GEC-Version=${SEC_MS_GEC_VERSION}`,
     {
-      headers: VOICE_HEADERS,
+      headers: headersWithMuid(VOICE_HEADERS),
     },
   );
 
