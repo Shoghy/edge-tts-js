@@ -340,9 +340,9 @@ export class Communicate {
 
     this.texts = splitTextByByteLength(
       removeIncompatibleCharacters(text)
-        .replace("&", "&amp;")
-        .replace(">", "&gt;")
-        .replace("<", "&lt;"),
+        .replaceAll("&", "&amp;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("<", "&lt;"),
       4096,
     );
   }
