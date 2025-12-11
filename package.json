@@ -19,8 +19,8 @@
     "tts",
     "edge"
   ],
-  "main": "index.cjs",
-  "types": "index.d.cts",
+  "main": "index.js",
+  "types": "index.d.ts",
   "license": "MIT",
   "scripts": {
     "build": "tsup && bun run move-files.ts"
