@@ -12,17 +12,16 @@ export class ListVoiceError extends Enum({
 
 export interface Voice {
   Name: string;
-  DisplayName: string;
-  LocalName: string;
   ShortName: string;
-  Gender: string;
+  Gender: "Male" | "Female";
   Locale: string;
-  LocaleName: string;
-  SampleRateHertz: string;
-  VoiceType: string;
-  Status: string;
-  VoiceTag?: Record<string, string[]>;
-  WordsPerMinute: string;
+  SuggestedCodec: string;
+  FriendlyName: string;
+  Status: "GA" | "Preview" | "Deprecated";
+  VoiceTag: {
+    ContentCategories: string[];
+    VoicePersonalities: string[];
+  };
 }
 
 export async function listVoices(): Promise<Result<Voice[], ListVoiceError>> {
