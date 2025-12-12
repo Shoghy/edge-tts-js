@@ -19,8 +19,46 @@ export interface Voice {
   FriendlyName: string;
   Status: "GA" | "Preview" | "Deprecated";
   VoiceTag: {
-    ContentCategories: string[];
-    VoicePersonalities: string[];
+    ContentCategories: Array<
+      | "General"
+      | "News"
+      | "Novel"
+      | " Novel"
+      | "Cartoon"
+      | "Sports"
+      | "Dialect"
+      | "Conversation"
+      | "Copilot"
+    >;
+    VoicePersonalities: Array<
+      | "Friendly"
+      | "Positive"
+      | "Warm"
+      | "Lively"
+      | "Passion"
+      | "Cute"
+      | "Humorous"
+      | "Professional"
+      | "Reliable"
+      | "Expressive"
+      | "Caring"
+      | "Pleasant"
+      | "Confident"
+      | "Authentic"
+      | "Honest"
+      | "Rational"
+      | "Considerate"
+      | "Comfort"
+      | "Cheerful"
+      | "Clear"
+      | "Conversational"
+      | "Authority"
+      | "Approachable"
+      | "Casual"
+      | "Sincere"
+      | "Bright"
+      | "Sunshine"
+    >;
   };
 }
 
