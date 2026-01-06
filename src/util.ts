@@ -48,7 +48,7 @@ export async function runTTS({
 
   function addData(bytes: Uint8Array): void {
     length += bytes.length;
-    if (length > data.length) {
+    if (length >= data.length) {
       const grow = Math.max(length, data.length + DATA_GROW);
       const temp = new Uint8Array(grow);
       temp.set(data);
