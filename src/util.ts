@@ -47,15 +47,16 @@ export async function runTTS({
   let length = 0;
 
   function addData(bytes: Uint8Array): void {
-    length += bytes.length;
-    if (length >= data.length) {
-      const grow = Math.max(length, data.length + DATA_GROW);
+    const newLength = bytes.length + length;
+    if (newLength >= data.length) {
+      const grow = Math.max(newLength, data.length + DATA_GROW);
       const temp = new Uint8Array(grow);
       temp.set(data);
       data = temp;
     }
 
     data.set(bytes, length);
+    length = newLength;
   }
 
   for await (const chunkResult of communicate.stream()) {
