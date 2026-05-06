@@ -10,7 +10,9 @@ import {
 } from "rusting-js/enums";
 import {
   DEFAULT_VOICE,
+  MP3_BITRATE_BPS,
   SEC_MS_GEC_VERSION,
+  TICKS_PER_SECOND,
   WSS_HEADERS,
   WSS_URL,
 } from "./constants.ts";
@@ -298,6 +300,8 @@ class CommunicateState {
     public offsetCompensation: number,
     public lastDurationOffset: number,
     public streamWasCalled: boolean,
+    public chunkAudioBytes: number,
+    public cumulativeAudioBytes: number,
   ) {}
 }
 
@@ -322,7 +326,7 @@ interface CommunicateOptions {
 
 export class Communicate {
   texts: Generator<Uint8Array<ArrayBuffer>, void, unknown>;
-  state = new CommunicateState(new Uint8Array(), 0, 0, false);
+  state = new CommunicateState(new Uint8Array(), 0, 0, false, 0, 0);
   ttsConfig: TTSConfig;
   ws: Option<WebSocket> = None();
 
@@ -354,10 +358,21 @@ export class Communicate {
 
     this.state.streamWasCalled = true;
     for (this.state.partialText of this.texts) {
+      this.state.chunkAudioBytes = 0;
       for await (const message of this.#stream()) {
         yield message;
       }
     }
+  }
+
+  #compensateOffset(): void {
+    this.state.cumulativeAudioBytes += this.state.chunkAudioBytes;
+    this.state.offsetCompensation = Math.floor(
+      (this.state.cumulativeAudioBytes * 8 * TICKS_PER_SECOND) /
+        MP3_BITRATE_BPS,
+    );
+
+    this.state.chunkAudioBytes = 0;
   }
 
   async *#stream(): AsyncGenerator<Result<TTSChunk, Error>, void> {
@@ -429,8 +444,7 @@ Path:speech.config\r\n\r
             break;
           }
           case "turn.end":
-            this.state.offsetCompensation = this.state.lastDurationOffset;
-            this.state.offsetCompensation += 8_750_000;
+            this.#compensateOffset();
 
             promise.resolve(ControlFlow.Break(undefined));
 
@@ -553,6 +567,7 @@ Path:speech.config\r\n\r
         );
 
         audioWasReceived = true;
+        this.state.chunkAudioBytes += data.length;
       }
     };
 

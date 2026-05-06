@@ -36,3 +36,6 @@ export const VOICE_HEADERS = {
   "Sec-Fetch-Mode": "cors",
   "Sec-Fetch-Dest": "empty",
 } as const;
+
+export const TICKS_PER_SECOND = 10_000_000;
+export const MP3_BITRATE_BPS = 48_000;
